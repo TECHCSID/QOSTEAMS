@@ -1,33 +1,159 @@
+#requires -RunAsAdministrator
+#requires -Version 3.0 -Modules NetQos
 <#
-.SYNOPSIS
-Microsoft Teams QoS Client Activation Script
-.Description
-Microsoft Teams QoS Client Activation Script
-.NOTES
-  Version      	   		: 1.0
-  Author(s)    			: Erwin Bierens
-  Email/Blog/Twitter	: erwin@bierens.it https://erwinbierens.com @erwinbierens
-.EXAMPLE
-.\Set-QoSClientActivationScript.ps1
+      .SYNOPSIS
+      Apply QoS Settings for Microsoft Teams Room Devices
+
+      .DESCRIPTION
+      Apply Network Quality of Service (QoS) settings for Microsoft Teams Room Devices.
+      I use this script to deploy the QoS settings to MTR devices via Intune.
+
+      .PARAMETER AppPathNameMatchCondition
+      Specifies the name by which an application is run, such as application.exe or %ProgramFiles%\application.exe application.
+
+      .EXAMPLE
+      PS C:\> .\Set-QoSForMicrosoftTeamsRoomDevices.ps1
+
+      .EXAMPLE
+      PS C:\> .\Set-QoSForMicrosoftTeamsRoomDevices.ps1 -AppPathNameMatchCondition 'Teams.exe'
+
+      .NOTES
+      Idea based on a Twitter chat with @StaleHansen
+
+      Please ensure to check the Ports!
+      They must match your Teams Admin Center (TAC) settings.
+
+      .LINK
+      Get-NetQosPolicy
+
+      .LINK
+      New-NetQosPolicy
+
+      .LINK
+      https://docs.microsoft.com/en-us/microsoftteams/qos-in-teams-clients
+
+      .LINK
+      https://twitter.com/StaleHansen/status/1294341225647083522
 #>
+[CmdletBinding(ConfirmImpact = 'Low',
+SupportsShouldProcess)]
+param
+(
+   [Parameter(ValueFromPipeline,
+   ValueFromPipelineByPropertyName)]
+   [Alias('AppName')]
+   [string]
+   $AppPathNameMatchCondition = $null
+)
 
-# Create QoS Policys
-New-NetQosPolicy -Name "TeamsClientAudio" -AppPathName "Teams.exe" -IPProtocol Both -IPSrcPortStart 50000 -IPSrcPortEnd 50019 -DSCPValue 46
-New-NetQosPolicy -Name "TeamsClientVideo" -AppPathName "Teams.exe" -IPProtocol Both -IPSrcPortStart 50020 -IPSrcPortEnd 50039 -DSCPValue 34
-New-NetQosPolicy -Name "TeamsClientSharing" -AppPathName "Teams.exe" -IPProtocol Both -IPSrcPortStart 50040 -IPSrcPortEnd 50059 -DSCPValue 18
+begin
+{
+   $AppSharingPolicy = 'TeamsClientSharing'
+   $VideoPolicy = 'TeamsClientVideo'
+   $AudioPoliy = 'TeamsClientAudio'
+}
 
-# Create Registry setting to enable QoS
-New-Item -Path "HKLM:\Software\Policies\Microsoft\Windows\" -Name QoS -Value "Default Value" -Force
-New-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\QoS" -Name "Application Name" -Value "Teams.exe" -PropertyType "String" -Force |Out-Null
-New-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\QoS" -Name "DSCP Value" -Value "46" -PropertyType "String" -Force |Out-Null
-New-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\QoS" -Name "Local IP" -Value "*" -PropertyType "String" -Force |Out-Null
-New-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\QoS" -Name "Local IP Prefix Length" -Value "*" -PropertyType "String" -Force |Out-Null
-New-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\QoS" -Name "Local Port" -Value "50000-50019" -PropertyType "String" -Force |Out-Null
-New-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\QoS" -Name "Protocol" -Value "*" -PropertyType "String" -Force |Out-Null
-New-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\QoS" -Name "Remote IP" -Value "*" -PropertyType "String" -Force |Out-Null
-New-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\QoS" -Name "Remote Port" -Value "*" -PropertyType "String" -Force |Out-Null
-New-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\QoS" -Name "Throttle Rate" -Value "-1" -PropertyType "String" -Force |Out-Null
+process
+{
+   if ($pscmdlet.ShouldProcess('QoS-Settings', 'Apply'))
+   {
+      #region Audio
+      if (-not (Get-NetQosPolicy -Name $AudioPoliy -ErrorAction SilentlyContinue -WarningAction SilentlyContinue))
+      {
+         try
+         {
+            # Splat the parameters
+            $paramNewNetQosPolicy = @{
+               NetworkProfile               = 'All'
+               IPSrcPortStartMatchCondition = 50000
+               IPSrcPortEndMatchCondition   = 50019
+               DSCPAction                   = 46
+               IPProtocolMatchCondition     = 'Both'
+               Name                         = $AudioPoliy
+               Confirm                      = $false
+               WarningAction                = 'Continue'
+               ErrorAction                  = 'Stop'
+            }
 
-#update local store
-gpupdate /force
+            # Do we have an application name?
+            if ($AppPathNameMatchCondition)
+            {
+               $paramNewNetQosPolicy.Add('AppPathNameMatchCondition', $AppPathNameMatchCondition)
+            }
 
+            $null = (New-NetQosPolicy @paramNewNetQosPolicy)
+         }
+         catch
+         {
+            Write-Warning -Message ('Unable to apply {0} QoS Policy' -f $AudioPoliy)
+         }
+      }
+      #endregion Audio
+
+      #region Video
+      if (-not (Get-NetQosPolicy -Name $VideoPolicy -ErrorAction SilentlyContinue -WarningAction SilentlyContinue))
+      {
+         try
+         {
+            # Splat the parameters
+            $paramNewNetQosPolicy = @{
+               NetworkProfile               = 'All'
+               IPSrcPortStartMatchCondition = 50020
+               IPSrcPortEndMatchCondition   = 50039
+               DSCPAction                   = 34
+               IPProtocolMatchCondition     = 'Both'
+               Name                         = $VideoPolicy
+               Confirm                      = $false
+               WarningAction                = 'Continue'
+               ErrorAction                  = 'Stop'
+            }
+
+            # Do we have an application name?
+            if ($AppPathNameMatchCondition)
+            {
+               $paramNewNetQosPolicy.Add('AppPathNameMatchCondition', $AppPathNameMatchCondition)
+            }
+
+            $null = (New-NetQosPolicy @paramNewNetQosPolicy)
+         }
+         catch
+         {
+            Write-Warning -Message ('Unable to apply {0} QoS Policy' -f $VideoPolicy)
+         }
+      }
+      #endregion Video
+
+      #region AppSharing
+      if (-not (Get-NetQosPolicy -Name $AppSharingPolicy -ErrorAction SilentlyContinue -WarningAction SilentlyContinue))
+      {
+         try
+         {
+            # Splat the parameters
+            $paramNewNetQosPolicy = @{
+               NetworkProfile               = 'All'
+               IPSrcPortStartMatchCondition = 50040
+               IPSrcPortEndMatchCondition   = 50059
+               DSCPAction                   = 18
+               IPProtocolMatchCondition     = 'Both'
+               Name                         = $AppSharingPolicy
+               Confirm                      = $false
+               WarningAction                = 'Continue'
+               ErrorAction                  = 'Stop'
+            }
+
+            # Do we have an application name?
+            if ($AppPathNameMatchCondition)
+            {
+               $paramNewNetQosPolicy.Add('AppPathNameMatchCondition', $AppPathNameMatchCondition)
+            }
+
+            $null = (New-NetQosPolicy @paramNewNetQosPolicy)
+         }
+         catch
+         {
+            Write-Warning -Message ('Unable to apply {0} QoS Policy' -f $AppSharingPolicy)
+         }
+      }
+      #end AppSharing
+   }
+}
