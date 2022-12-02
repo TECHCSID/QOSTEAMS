@@ -43,7 +43,7 @@ param
    ValueFromPipelineByPropertyName)]
    [Alias('AppName')]
    [string]
-   $AppPathNameMatchCondition = $null
+   $AppPathNameMatchCondition = teams.exe
 )
 
 begin
